@@ -30,6 +30,7 @@ namespace NEAT
 		public int NumInputs { get; private set; }
 		public int NumNeurons { get; private set; }
 		public HashSet<Tuple<int, int>> InnovationNumbers { get; private set; }
+		public double Fitness { get; set; }
 		List<string> outputNames;
 
 		Random rand = new Random(Guid.NewGuid().GetHashCode());
@@ -43,6 +44,7 @@ namespace NEAT
 			NumInputs = inputs.Count();
 			NumOutputs = outputNames.Count();
 			NumNeurons = NumInputs + NumOutputs;
+			Fitness = double.MinValue;
 			for (int id = 0; id < NumInputs; id++)
 			{
 				Neurons.Add(id, new Neuron(id, inputs.ElementAt(id)));
@@ -54,12 +56,46 @@ namespace NEAT
 			}
 		}
 
-		private void InitializeRandom()
+		public NeuralNetwork(int numInputs, IEnumerable<string> outputNames, HashSet<Tuple<int, int>> _innovationNumbers)
 		{
+			this.outputNames = (List<string>)outputNames;
+			Neurons = new Dictionary<int, Neuron>();
+			Connections = new List<Tuple<int, int>>();
+			InnovationNumbers = _innovationNumbers;
+			NumInputs = numInputs;
+			NumOutputs = outputNames.Count();
+			NumNeurons = NumInputs + NumOutputs;
+			Fitness = double.MinValue;
+			for (int id = 0; id < NumInputs; id++)
+			{
+				Neurons.Add(id, new Neuron(id));
+			}
 
+			for (int id = 0; id < NumOutputs; id++)
+			{
+				Neurons.Add(id + NumInputs, new Neuron(id + NumInputs));
+			}
 		}
 
-		//TODO: change to private
+		public void InitializeRandom()
+		{
+			int round1LinksNum = (int)(rand.NextDouble() * NumInputs)+1;
+			int round1NeuronsNum = (int)(rand.NextDouble() * NumOutputs*2)+1;
+			int round2LinksNum = (int)(rand.NextDouble() * NumInputs);
+
+			for (int i = 0; i < round1LinksNum; i++) {
+				MutateLink();
+			}
+			for (int i = 0; i < round1NeuronsNum; i++)
+			{
+				MutateNeuron();
+			}
+			for (int i = 0; i < round2LinksNum; i++)
+			{
+				MutateLink();
+			}
+		}
+
 		public void MutateLink()
 		{
 			int from;
@@ -101,23 +137,32 @@ namespace NEAT
 
 		public void MutateNeuron()
 		{
-			int neuronId = rand.Next(NumInputs, NumInputs + NumOutputs);
-			if (Neurons.TryGetValue(neuronId, out Neuron farNeuron))
+			while (true)
 			{
-				int connectionId = rand.Next(farNeuron.Connections.Count());
-				Neuron newNeuron = new Neuron(NumNeurons);
-				Connection conn = farNeuron.Connections.Values.ElementAt(connectionId);
-				Tuple<int, int> nearToMidTuple = new Tuple<int, int>(conn.From.ID, newNeuron.ID);
-				Connection nearToMid = new Connection(nearToMidTuple.GetHashCode(), conn.From, 1);
+				int neuronId = rand.Next(NumInputs, NumInputs + NumOutputs);
+				if (Neurons.TryGetValue(neuronId, out Neuron farNeuron) && farNeuron.Connections.Count > 0)
+				{
+					int connectionId = rand.Next(farNeuron.Connections.Count());
+					Neuron newNeuron = new Neuron(NumNeurons);
+					Connection conn = farNeuron.Connections.Values.ElementAt(connectionId);
+					Tuple<int, int> nearToMidTuple = new Tuple<int, int>(conn.From.ID, newNeuron.ID);
 
-				Tuple<int, int> midToFarTuple = new Tuple<int, int>(newNeuron.ID, farNeuron.ID);
-				Connection midtoFar = new Connection(midToFarTuple.GetHashCode(), newNeuron, conn.Weight);
+					Connection nearToMid = new Connection(nearToMidTuple.GetHashCode(), conn.From, 1);
 
-				Neurons.Add(newNeuron.ID, newNeuron);
-				newNeuron.AddConnection(nearToMid.ID, nearToMid);
-				farNeuron.Connections.Remove(connectionId);
-				farNeuron.AddConnection(midtoFar.ID, midtoFar);
-				NumNeurons++;
+					Tuple<int, int> midToFarTuple = new Tuple<int, int>(newNeuron.ID, farNeuron.ID);
+					Connection midtoFar = new Connection(midToFarTuple.GetHashCode(), newNeuron, conn.Weight);
+
+					Neurons.Add(newNeuron.ID, newNeuron);
+					newNeuron.AddConnection(nearToMid.ID, nearToMid);
+					Connection oldConnection = farNeuron.Connections.Values.ElementAt(connectionId);
+					oldConnection.EnableDisable();
+					Connections.Remove(new Tuple<int, int>(nearToMidTuple.Item1, midToFarTuple.Item2));
+					Connections.Add(nearToMidTuple);
+					Connections.Add(midToFarTuple);
+					farNeuron.AddConnection(midtoFar.ID, midtoFar);
+					NumNeurons++;
+					return;
+				}
 			}
 		}
 
@@ -137,23 +182,7 @@ namespace NEAT
 		}
 
 		public string generateDOT() {
-
-
-			//subgraph cluster_level1{
-			//	label = "Level 1";
-			//	proc1[label = "{<f0> 1.0|<f1> One process here\n\n\n}" shape = Mrecord];
-			//	proc2[label = "{<f0> 2.0|<f1> Other process here\n\n\n}" shape = Mrecord];
-			//	store1[label = "<f0>    |<f1> Data store one"];
-			//	store2[label = "<f0>   |<f1> Data store two"];
-			//	{ rank = same; store1, store2}
-
-			//}
-
-
 			StringBuilder sb = new StringBuilder("digraph NeuralNetwork{\n");
-			//for (int i = 0; i < NumOutputs; i++) {
-			//	sb.Append(i+NumInputs+"[lable = ");
-			//}
 			sb.Append("subgraph cluster_level1{\nlabel = \"Inputs\";\n");
 			for (int i = 0; i < NumInputs; i++) {
 				Neuron neur = Neurons.Values.ElementAt(i);
@@ -176,35 +205,68 @@ namespace NEAT
 			{
 				foreach (Connection conn in neuron.Connections.Values)
 				{
-					sb.Append(conn.From.ID + " -> " + neuron.ID + "[label=\"" + Math.Round(conn.Weight, 3) + "\"];\n");
+					if (conn.Enabled) {
+						sb.Append(conn.From.ID + " -> " + neuron.ID + "[label=\"" + Math.Round(conn.Weight, 3) + "\"];\n");
+					}
 				}
 			}
 			sb.Append("}");
 			return sb.ToString();
-
-			//foreach (Neuron neuron in Neurons.Values)
-			//{
-			//	foreach (Connection conn in neuron.Connections.Values)
-			//	{
-			//		sb.Append(conn.From.ID + " -> " + neuron.ID + "[label=\"" +conn.Weight+ "\"];\n");
-			//	}
-			//}
-			//sb.Append("}");
 		}
 
-		//public static NeuralNetwork Crossover(NeuralNetwork NN1, NeuralNetwork NN2)
-		//{
-		//	Random rand = new Random(Guid.NewGuid().GetHashCode());
-		//	NeuralNetwork childNetwork = new NeuralNetwork();
+		public static NeuralNetwork Crossover(NeuralNetwork NN1, NeuralNetwork NN2)
+		{
+			if (NN1.Fitness == double.MinValue || NN2.Fitness == double.MinValue) {
+				throw new ArgumentException("One of the neural networks did not have a fitness assigned to it.");
+			}
+			Random rand = new Random(Guid.NewGuid().GetHashCode());
+			NeuralNetwork childNetwork = new NeuralNetwork(NN1.NumInputs, NN1.outputNames, NN1.InnovationNumbers);
 
-		//	foreach (Tuple<int, int> conn in NN1.) {
+			NeuralNetwork fit;
+			NeuralNetwork lessFit;
+			if (NN1.Fitness > NN2.Fitness) {
+				fit = NN1;
+				lessFit = NN2;
+			}
+			else {
+				fit = NN2;
+				lessFit = NN1;
+			}
 
-		//	}
-
-		//	if (rand.NextDouble() >= .5) {
-				
-		//	}
-		//}
+			foreach (Tuple<int, int> conn in fit.Connections)
+			{
+				if (!childNetwork.Neurons.ContainsKey(conn.Item1)) {
+					childNetwork.Neurons.Add(conn.Item1, new Neuron(conn.Item1));
+				}
+				if (!childNetwork.Neurons.ContainsKey(conn.Item2))
+				{
+					childNetwork.Neurons.Add(conn.Item2, new Neuron(conn.Item2));
+				}
+				childNetwork.Neurons.TryGetValue(conn.Item2, out Neuron toNeuron);
+				if (lessFit.Connections.Contains(conn))
+				{
+					if (rand.NextDouble() >= .5)
+					{
+						fit.Neurons.TryGetValue(conn.Item2, out Neuron parentNeuron);
+						parentNeuron.Connections.TryGetValue(conn.GetHashCode(), out Connection selectedCon);
+						toNeuron.Connections.Add(selectedCon.GetHashCode(), selectedCon);
+					}
+					else
+					{
+						lessFit.Neurons.TryGetValue(conn.Item2, out Neuron parentNeuron);
+						parentNeuron.Connections.TryGetValue(conn.GetHashCode(), out Connection selectedCon);
+						toNeuron.Connections.Add(selectedCon.GetHashCode(), selectedCon);
+					}
+				}
+				else
+				{
+					fit.Neurons.TryGetValue(conn.Item2, out Neuron parentNeuron);
+					parentNeuron.Connections.TryGetValue(conn.GetHashCode(), out Connection selectedCon);
+					toNeuron.Connections.Add(selectedCon.GetHashCode(), selectedCon);
+				}
+			}
+			return childNetwork;
+		}
 	}
 
 	public class Neuron

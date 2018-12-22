@@ -28,26 +28,31 @@ namespace MAIN
 
 			NeuralNetwork NN1 = new NeuralNetwork(inputs, outputs, innovationNumbers);
 			NeuralNetwork NN2 = new NeuralNetwork(inputs, outputs, innovationNumbers);
-			for (int i = 0; i < 15; i++)
-			{
-				NN1.MutateLink();
-				NN2.MutateLink();
-			}
-			Console.WriteLine(NN1.ToString());
-			Console.WriteLine(NN2.ToString());
+			//for (int i = 0; i < 15; i++)
+			//{
+			//	NN1.MutateLink();
+			//	NN2.MutateLink();
+			//}
 
-			NN2.MutateNeuron();
-			NN2.MutateNeuron();
-			NN2.MutateNeuron();
-			NN2.MutateNeuron();
+			//NN2.MutateNeuron();
+			//NN2.MutateNeuron();
+			//NN2.MutateNeuron();
+			//NN2.MutateNeuron();
 
-			for (int i = 0; i < 15; i++)
-			{
-				NN2.MutateLink();
-			}
+			//for (int i = 0; i < 15; i++)
+			//{
+			//	NN2.MutateLink();
+			//}
 
-			Console.WriteLine(NN2.ToString());
+			NN1.InitializeRandom();
+			NN2.InitializeRandom();
+			NN1.Fitness = 100;
+			NN2.Fitness = 90;
+			NeuralNetwork child = NeuralNetwork.Crossover(NN1, NN2);
+
+			Console.WriteLine(NN1.generateDOT());
 			Console.WriteLine(NN2.generateDOT());
+			Console.WriteLine(child.generateDOT());
 			Console.WriteLine("Done");
 			Console.ReadLine();
 		}
@@ -59,13 +64,6 @@ namespace MAIN
 				12,
 				1,
 				2,
-				7,
-				2,
-				12,
-				12,
-				12,
-				12,
-				12
 			};
 		}
 
@@ -73,10 +71,7 @@ namespace MAIN
 		{
 			return new List<string>
 			{
-				"W",
-				"A",
-				"S",
-				"D"
+				"Out"
 			};
 		}
 	}
